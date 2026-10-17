@@ -11,15 +11,16 @@ const NIGERIAN_STATES = [
 ];
 
 const STORE_CATEGORIES = [
-  'Phones & Gadgets',
-  'Laptops & Tech',
-  'Cars & Vehicles',
-  'Houses & Apartments',
-  'Land & Plots',
-  'Bikes & Tricycles',
-  'Food Stuff & Provisions',
-  'Fashion & Apparel',
-  'General Merchandise'
+  { label: 'Auctions & Bidding', emoji: '🏷️' },
+  { label: 'Cars & Vehicles', emoji: '🏎️' },
+  { label: 'Bikes & Tricycles', emoji: '🛵' },
+  { label: 'Houses & Apartments', emoji: '🏠' },
+  { label: 'Land & Plots', emoji: '🏞️' },
+  { label: 'Phones & Gadgets', emoji: '📱' },
+  { label: 'Laptops & Tech', emoji: '💻' },
+  { label: 'Food Stuff', emoji: '🥖' },
+  { label: 'Fashion & Apparel', emoji: '👔' },
+  { label: 'General Merchandise', emoji: '📦' },
 ];
 
 export default function RegisterPage() {
@@ -27,7 +28,7 @@ export default function RegisterPage() {
   const router = useRouter();
 
   const [storeName, setStoreName] = useState('');
-  const [category, setCategory] = useState(STORE_CATEGORIES[0]);
+  const [category, setCategory] = useState(STORE_CATEGORIES[0].label);
   const [stateRegion, setStateRegion] = useState(NIGERIAN_STATES[0]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -61,22 +62,20 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-between font-sans text-slate-900">
-      {/* Top Banner / Ticker */}
+      {/* Top Ticker Header */}
       <div className="bg-[#0066FF] text-white text-[11px] font-bold py-1.5 px-4 text-center flex items-center justify-center gap-2 shadow-xs">
         <span className="bg-white/20 text-white text-[9px] uppercase px-1.5 py-0.5 rounded font-black tracking-wider">
           REGISTER STORE
         </span>
-        <span>Join 140+ verified vendors selling directly to buyers across Nigeria</span>
+        <span>Over 140+ buyers currently chatting directly with verified vendors across Nigeria</span>
       </div>
 
       <div className="flex-1 flex flex-col justify-center items-center p-4 my-6">
-        {/* Full goMarket Branding Logo with Basket */}
+        {/* Clean Logo Header - No blue box under basket */}
         <div className="mb-6 text-center space-y-1">
           <Link href="/" className="inline-flex items-center gap-2 group">
-            <div className="w-10 h-10 bg-[#0066FF] text-white rounded-xl flex items-center justify-center text-xl shadow-md group-hover:scale-105 transition-all">
-              🛒
-            </div>
-            <span className="text-3xl font-black tracking-tight text-[#0066FF]">
+            <span className="text-2xl group-hover:scale-110 transition-transform">🛒</span>
+            <span className="text-2xl font-black tracking-tight text-[#0066FF]">
               goMarket
             </span>
           </Link>
@@ -85,12 +84,12 @@ export default function RegisterPage() {
           </p>
         </div>
 
-        {/* Register Card */}
+        {/* Form Card */}
         <div className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl shadow-xs p-6 sm:p-8 space-y-5">
           <div className="space-y-1 text-center sm:text-left border-b border-slate-100 pb-4">
             <h1 className="text-xl font-black text-slate-900">Start Selling on goMarket</h1>
             <p className="text-xs text-slate-500">
-              Set up your storefront, select your state and category, and reach thousands of buyers.
+              Set up your storefront, choose your category and location, and connect with buyers.
             </p>
           </div>
 
@@ -126,8 +125,8 @@ export default function RegisterPage() {
                   className="w-full h-11 bg-slate-50 border border-slate-200 rounded-xl px-3 text-xs text-slate-900 focus:outline-none focus:border-[#0066FF]"
                 >
                   {STORE_CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
+                    <option key={cat.label} value={cat.label}>
+                      {cat.emoji} {cat.label}
                     </option>
                   ))}
                 </select>
