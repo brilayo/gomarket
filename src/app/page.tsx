@@ -1,935 +1,503 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import AnnouncementBar from '@/components/AnnouncementBar';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 
-
-
-interface MediaFile {
+interface Product {
   id: string;
-  file_url: string;
-  file_type: string;
-}
-
-interface Seller {
-  id: string;
-  business_name: string;
-  phone_number: string;
+  title: string;
+  price: number;
+  original_price?: number;
+  currency: string;
+  category: string;
+  location: string;
+  image_url_1: string;
+  image_url_2?: string;
+  image_url_3?: string;
+  image_url_4?: string;
+  image_url_5?: string;
+  description?: string;
+  is_flash_sale?: boolean;
+  is_sponsored?: boolean;
+  is_featured?: boolean;
+  is_available?: boolean;
   slug: string;
-  state?: string;
-}
-
-interface Item {
-  id: string;
-  title: string;
-  description: string;
-  price_kobo: number;
-  status: string;
-  is_negotiable: boolean;
-  short_code: string;
   views_count?: number;
-  created_at: string;
-  sellers?: Seller;
-  media_files?: MediaFile[];
+  whatsapp?: string;
+  phone?: string;
+  vendor_name?: string;
 }
 
-interface AdminFeaturedProduct {
-  id: string;
-  title: string;
-  price_kobo: number;
-  image_url: string;
-  store_name: string;
-  whatsapp_number: string;
-  phone_number: string;
-  short_code: string;
-  store_slug: string;
-  badge: string;
-}
-
-interface AdBanner {
-  id: string;
-  sponsor_name: string;
-  title: string;
-  tagline: string;
-  cta_text: string;
-  target_url: string;
-  badge: string;
-  bg_gradient: string;
-  position: string;
-}
-
-// 🇳🇬 ALL 36 NIGERIAN STATES + FCT
 const NIGERIAN_STATES = [
-  'All States',
-  'Abia', 'Adamawa', 'Akwa Ibom', 'Anambra', 'Bauchi', 'Bayelsa', 'Benue', 'Borno',
-  'Cross River', 'Delta', 'Ebonyi', 'Edo', 'Ekiti', 'Enugu', 'FCT - Abuja', 'Gombe',
-  'Imo', 'Jigawa', 'Kaduna', 'Kano', 'Katsina', 'Kebbi', 'Kogi', 'Kwara', 'Lagos',
-  'Nasarawa', 'Niger', 'Ogun', 'Ondo', 'Osun', 'Oyo', 'Plateau', 'Rivers', 'Sokoto',
-  'Taraba', 'Yobe', 'Zamfara'
+  'All 36 States', 'Lagos', 'FCT Abuja', 'Rivers', 'Oyo', 'Kano', 'Edo', 'Delta', 'Anambra', 'Ogun', 'Kaduna',
+  'Abia', 'Adamawa', 'Akwa Ibom', 'Bayelsa', 'Benue', 'Borno', 'Cross River', 'Ebonyi', 'Ekiti',
+  'Enugu', 'Gombe', 'Imo', 'Jigawa', 'Katsina', 'Kebbi', 'Kogi', 'Kwara', 'Nasarawa', 'Niger',
+  'Ondo', 'Osun', 'Plateau', 'Sokoto', 'Taraba', 'Yobe', 'Zamfara'
 ];
 
-// 🏷️ COMPREHENSIVE CATEGORIES (WITH AUCTIONS ADDED)
-const MARKETPLACE_CATEGORIES = [
-  { label: 'All Items', value: 'all' },
-  { label: '🔨 Auctions & Bidding', value: 'auction' },
-  { label: '🚗 Cars & Vehicles', value: 'car' },
-  { label: '🏍️ Bikes & Tricycles', value: 'bike' },
-  { label: '🏠 Houses & Apartments', value: 'house' },
-  { label: '🌍 Land & Plots', value: 'land' },
-  { label: '📱 Phones & Gadgets', value: 'phone' },
-  { label: '💻 Laptops & Tech', value: 'laptop' },
-  { label: '🌾 Food Stuff', value: 'food stuff' },
-  { label: '🍲 Prepared Food', value: 'food' },
-  { label: '🏠 Home Appliances', value: 'appliance' },
-  { label: '⌚ Watches & Jewelry', value: 'watch' },
-  { label: '👗 Clothes & Fashion', value: 'cloth' },
-  { label: '👟 Shoes & Sneakers', value: 'shoe' },
-  { label: '💊 Pharmacy & Medical', value: 'pharmacy' },
-  { label: '🧴 Body & Beauty Products', value: 'body' },
+const ALL_CATEGORIES = [
+  'All Categories',
+  'Phones & Tablets',
+  'Computers & Laptops',
+  'Electronics & Appliances',
+  'Fashion & Apparel',
+  'Sneakers & Footwear',
+  'Beauty & Personal Care',
+  'Home & Furniture',
+  'Vehicles & Auto',
+  'Property & Real Estate',
+  'Food, Groceries & Drinks',
+  'Services & Jobs'
 ];
 
-function formatPriceKobo(priceKobo: number): string {
-  if (!priceKobo || isNaN(priceKobo)) return '₦0';
-  return `₦${(priceKobo / 100).toLocaleString('en-NG')}`;
-}
-
-export default function UltimateGoMarketHomePage() {
+function HomeContent() {
   const supabase = createClient();
+  const searchParams = useSearchParams();
 
-  const [items, setItems] = useState<Item[]>([]);
-  const [sellers, setSellers] = useState<Seller[]>([]);
-  const [filteredItems, setFilteredItems] = useState<Item[]>([]);
+  // URL Query Parameters for direct links
+  const sharedProductId = searchParams.get('product');
+  const sharedVendorName = searchParams.get('vendor');
+
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Dynamic Admin States
-  const [adminFeaturedSlots, setAdminFeaturedSlots] = useState<AdminFeaturedProduct[]>([]);
-  const [middleAd, setMiddleAd] = useState<AdBanner | null>(null);
-  const [bottomAd, setBottomAd] = useState<AdBanner | null>(null);
-
-  // Search & Filter States
+  const [selectedState, setSelectedState] = useState('All 36 States');
+  const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSellerSlug, setSelectedSellerSlug] = useState<string>('all');
-  const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  const [selectedState, setSelectedState] = useState<string>('All States');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [onlyNegotiable, setOnlyNegotiable] = useState<boolean>(false);
-  const [isListening, setIsListening] = useState<boolean>(false);
 
-  // Custom Dropdown State for States
-  const [isStateDropdownOpen, setIsStateDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Bargain Modal State
-  const [offerItem, setOfferItem] = useState<Item | null>(null);
-  const [customOfferPrice, setCustomOfferPrice] = useState<string>('');
+  // Make an Offer Modal State
+  const [activeOfferProduct, setActiveOfferProduct] = useState<Product | null>(null);
+  const [offerPrice, setOfferPrice] = useState('');
+  const [offerName, setOfferName] = useState('');
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsStateDropdownOpen(false);
+    async function fetchProducts() {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setProducts(data);
       }
+      setLoading(false);
     }
-    document.addEventListener('mousedown', handleClickOutside);
-
-    async function loadMarketplaceData() {
-      try {
-        // 1. Fetch Sellers
-        const { data: sellersData } = await supabase
-          .from('sellers')
-          .select('*')
-          .order('business_name', { ascending: true });
-
-        if (sellersData) {
-          setSellers(sellersData);
-        }
-
-        // 2. Fetch Admin Featured Top 5 Slots from Supabase (with fallbacks if empty)
-        const { data: adminSlots } = await supabase
-          .from('admin_featured_slots')
-          .select('*')
-          .limit(5);
-
-        if (adminSlots && adminSlots.length > 0) {
-          setAdminFeaturedSlots(adminSlots);
-        } else {
-          setAdminFeaturedSlots([
-            {
-              id: 'admin-slot-1',
-              title: 'Addidas shoe (Admin Pick)',
-              price_kobo: 3400000,
-              image_url: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?auto=format&fit=crop&q=80&w=500',
-              store_name: "Ella's Boutique",
-              whatsapp_number: '2348000000000',
-              phone_number: '2348000000000',
-              short_code: 'sample1',
-              store_slug: 'ellas-boutique',
-              badge: '👑 ADMIN PICK',
-            },
-            {
-              id: 'admin-slot-2',
-              title: 'Smart Designer Sneaker',
-              price_kobo: 4500000,
-              image_url: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&q=80&w=500',
-              store_name: 'Lagos Hub',
-              whatsapp_number: '2348000000000',
-              phone_number: '2348000000000',
-              short_code: 'sample2',
-              store_slug: 'lagos-hub',
-              badge: '👑 TOP DEAL',
-            },
-          ]);
-        }
-
-        
-
-        // 3. Fetch Admin Ad Banners from Supabase
-        const { data: adBanners } = await supabase
-          .from('admin_ad_banners')
-          .select('*');
-
-        if (adBanners && adBanners.length > 0) {
-          const middle = adBanners.find((ad) => ad.position === 'middle') || adBanners[0];
-          const bottom = adBanners.find((ad) => ad.position === 'bottom') || adBanners[1] || adBanners[0];
-          setMiddleAd(middle);
-          setBottomAd(bottom);
-        }
-
-        // 4. Fetch Marketplace Items
-        const { data: itemsData } = await supabase
-          .from('items')
-          .select('*, sellers(*), media_files(*)')
-          .order('created_at', { ascending: false });
-
-        const loadedItems = itemsData || [];
-        setItems(loadedItems);
-        setFilteredItems(loadedItems);
-      } catch (err) {
-        console.error('Error loading marketplace data:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadMarketplaceData();
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    fetchProducts();
   }, [supabase]);
-  
 
-  // Filtering Logic
-  useEffect(() => {
-    let result = [...items];
+  const isTruthy = (val: any) => 
+    val === true || val === 'true' || val === 1 || val === '1' || val === 't' || val === 'yes';
 
-    if (searchQuery.trim() !== '') {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (item) =>
-          item.title.toLowerCase().includes(q) ||
-          (item.description && item.description.toLowerCase().includes(q)) ||
-          item.sellers?.business_name.toLowerCase().includes(q)
-      );
+  const sponsoredProducts = products.filter(p => isTruthy(p.is_sponsored) || isTruthy(p.is_featured));
+  const flashSaleProducts = products.filter(p => isTruthy(p.is_flash_sale));
+
+  // Dynamic Marketplace Filtering (Handles direct Shared Links as well!)
+  const filteredMarketplace = products.filter(p => {
+    if (sharedProductId) {
+      return p.id === sharedProductId;
     }
-
-    if (selectedSellerSlug !== 'all') {
-      result = result.filter((item) => item.sellers?.slug === selectedSellerSlug);
+    if (sharedVendorName) {
+      return p.vendor_name?.toLowerCase() === sharedVendorName.toLowerCase();
     }
+    const matchesState = selectedState === 'All 36 States' || p.location === selectedState;
+    const matchesCategory = selectedCategory === 'All Categories' || p.category === selectedCategory;
+    const matchesSearch = !searchQuery || p.title.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesState && matchesCategory && matchesSearch;
+  });
 
-    if (selectedStatus !== 'all') {
-      result = result.filter((item) => item.status === selectedStatus);
-    }
-
-    if (selectedState !== 'All States') {
-      result = result.filter(
-        (item) =>
-          item.sellers?.state?.toLowerCase() === selectedState.toLowerCase()
-      );
-    }
-
-    if (selectedCategory !== 'all') {
-      const cat = selectedCategory.toLowerCase();
-      result = result.filter(
-        (item) =>
-          item.title.toLowerCase().includes(cat) ||
-          (item.description && item.description.toLowerCase().includes(cat))
-      );
-    }
-
-    if (onlyNegotiable) {
-      result = result.filter((item) => item.is_negotiable === true);
-    }
-
-    setFilteredItems(result);
-  }, [searchQuery, selectedSellerSlug, selectedStatus, selectedState, selectedCategory, onlyNegotiable, items]);
-
-  const handleVoiceSearch = () => {
-    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-      alert('Voice search is not supported in your browser.');
-      return;
-    }
-
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-NG';
-
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    recognition.onresult = (event: any) => {
-      setSearchQuery(event.results[0][0].transcript);
-    };
-
-    recognition.start();
+  const handleSendOffer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeOfferProduct || !offerPrice) return;
+    const phone = activeOfferProduct.whatsapp || activeOfferProduct.phone || '2348012345678';
+    const message = `Hello, I'm ${offerName || 'a buyer'}. I want to make an offer of ₦${Number(offerPrice).toLocaleString()} for your item: ${activeOfferProduct.title} (Listed at ₦${Number(activeOfferProduct.price).toLocaleString()}) on goMarket NG.`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+    setActiveOfferProduct(null);
+    setOfferPrice('');
+    setOfferName('');
   };
-
-  const handleShareToWhatsApp = (title: string, price: string, url?: string) => {
-    const text = `🔥 Check out "${title}" for ${price} on goMarket!\n${url || window.location.href}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-  };
-
-  const handleSendCustomOffer = () => {
-    if (!offerItem || !customOfferPrice) return;
-
-    const sellerName = offerItem.sellers?.business_name || 'Seller';
-    const sellerPhone = offerItem.sellers?.phone_number;
-    const formattedOriginal = formatPriceKobo(offerItem.price_kobo);
-    const formattedOffer = `₦${parseInt(customOfferPrice).toLocaleString('en-NG')}`;
-
-    const msg = `Hello ${sellerName}, I saw your listing for "${offerItem.title}" (${formattedOriginal}). Would you accept ${formattedOffer} for quick payment?`;
-
-    window.open(`https://wa.me/${sellerPhone}?text=${encodeURIComponent(msg)}`, '_blank');
-    setOfferItem(null);
-    setCustomOfferPrice('');
-  };
-
-  const firstHalf = filteredItems.slice(0, 5);
-  const secondHalf = filteredItems.slice(5);
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4">
-        <div className="text-center space-y-2">
-          <div className="text-4xl animate-bounce">🛒</div>
-          <p className="text-xs font-black text-[#0066FF] uppercase tracking-widest">
-            Loading goMarket...
-          </p>
-        </div>
-      </div >
-      
-    );
+    return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white text-xs font-bold">Loading goMarket...</div>;
   }
-  
-
-  const renderProductCard = (item: Item) => {
-    const mainMedia =
-      item.media_files && item.media_files.length > 0
-        ? item.media_files[0]
-        : null;
-    const formattedPrice = formatPriceKobo(item.price_kobo);
-    const sellerName = item.sellers?.business_name || 'Verified Vendor';
-    const sellerPhone = item.sellers?.phone_number;
-    const sellerSlug = item.sellers?.slug;
-
-    const message = `Hello ${sellerName}, I am interested in purchasing "${
-      item.title
-    }" priced at ${formattedPrice}${
-      item.is_negotiable ? ' (Negotiable)' : ''
-    }. Is it available?`;
-    const whatsappUrl = sellerPhone
-      ? `https://wa.me/${sellerPhone}?text=${encodeURIComponent(message)}`
-      : '#';
-    const itemUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/s/${sellerSlug}/p/${item.short_code}`;
-
-    return (
-      <div
-        key={item.id}
-        className="bg-white rounded-xl border border-slate-200/80 overflow-hidden shadow-xs hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between group"
-      >
-        <div>
-          <a
-            href={sellerSlug ? `/s/${sellerSlug}/p/${item.short_code}` : '#'}
-            className="aspect-square bg-slate-50 border-b border-slate-100 relative overflow-hidden flex items-center justify-center block"
-          >
-            {mainMedia ? (
-              mainMedia.file_type === 'video' ? (
-                <video src={mainMedia.file_url} className="w-full h-full object-cover" />
-              ) : (
-                <img
-                  src={mainMedia.file_url}
-                  alt={item.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-              )
-            ) : (
-              <span className="text-2xl">📦</span>
-            )}
-
-            <div className="absolute top-2 left-2 flex flex-col gap-1">
-              <span className="bg-slate-950/85 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full backdrop-blur-md flex items-center gap-1 shadow-xs">
-                <span className="h-1 w-1 rounded-full bg-emerald-400"></span>
-                {sellerName}
-              </span>
-            </div>
-
-            <div className="absolute bottom-2 right-2 flex items-center gap-1">
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleShareToWhatsApp(item.title, formattedPrice, itemUrl);
-                }}
-                className="bg-black/60 hover:bg-black/80 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full backdrop-blur-sm transition-colors"
-                title="Share to WhatsApp Status"
-              >
-                📲 Status
-              </button>
-              <span className="bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full backdrop-blur-sm">
-                👁️ {item.views_count || 0}
-              </span>
-            </div>
-          </a>
-          
-
-          <div className="p-2.5">
-            <a
-              href={sellerSlug ? `/s/${sellerSlug}/p/${item.short_code}` : '#'}
-              className="text-xs font-bold text-slate-900 hover:text-[#0066FF] transition-colors line-clamp-1 block"
-            >
-              {item.title}
-            </a>
-
-            <div className="flex items-center justify-between gap-1 mt-1 mb-1.5">
-              <span className="text-sm font-black text-[#0066FF]">
-                {formattedPrice}
-              </span>
-              {item.is_negotiable && (
-                <button
-                  onClick={() => {
-                    setOfferItem(item);
-                    setCustomOfferPrice(
-                      Math.round((item.price_kobo / 100) * 0.9).toString()
-                    );
-                  }}
-                  className="text-[9px] font-extrabold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200/80 px-1.5 py-0.5 rounded transition-colors"
-                >
-                  🤝 Offer
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-        
-
-        <div className="p-2.5 pt-0">
-          <div className="grid grid-cols-2 gap-1.5">
-            <a
-              href={whatsappUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="h-8 bg-[#25D366] hover:bg-[#20bd5a] text-white text-[11px] font-bold rounded-lg flex items-center justify-center gap-1 shadow-xs transition-colors"
-            >
-              💬 WhatsApp
-            </a>
-
-            {sellerPhone ? (
-              <a
-                href={`tel:${sellerPhone}`}
-                className="h-8 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold rounded-lg flex items-center justify-center gap-1 shadow-xs transition-colors"
-              >
-                📞 Call
-              </a>
-            ) : (
-              <a
-                href={sellerSlug ? `/s/${sellerSlug}/p/${item.short_code}` : '#'}
-                className="h-8 bg-slate-100 text-slate-700 text-[11px] font-bold rounded-lg flex items-center justify-center"
-              >
-                Details →
-              </a>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderAdBanner = (ad: AdBanner | null) => {
-    if (!ad) return null;
-    return (
-      <div
-        className={`bg-gradient-to-r ${ad.bg_gradient || 'from-blue-600 to-indigo-900'} rounded-2xl p-4 text-white shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 my-4 relative overflow-hidden`}
-      >
-        <div className="space-y-0.5 text-center sm:text-left z-10">
-          <span className="text-[9px] font-black tracking-widest uppercase bg-white/20 px-2 py-0.5 rounded-md backdrop-blur-sm">
-            📢 {ad.badge || 'SPONSORED'} • {ad.sponsor_name}
-          </span>
-          <h3 className="text-xs sm:text-sm font-black tracking-tight">{ad.title}</h3>
-          <p className="text-[11px] font-normal text-white/80 leading-snug">
-            {ad.tagline}
-          </p>
-        </div>
-
-        <a
-          href={ad.target_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="h-8 px-4 bg-white text-slate-900 text-xs font-black rounded-xl flex items-center justify-center shrink-0 shadow-xs hover:bg-slate-100 transition-colors z-10"
-        >
-          {ad.cta_text}
-        </a>
-      </div>
-    );
-  };
-  
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col justify-between">
+    <div className="min-h-screen bg-[#F8FAFC] font-sans text-slate-900 pb-24 flex flex-col justify-between">
       <div>
-        {/* Header with goMarket Branding (Admin button removed) */}
-        <header className="bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-4 py-3 sm:px-6 sticky top-0 z-40 shadow-xs">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <a href="/" className="flex items-center gap-2">
-              <span className="text-2xl">🛒</span>
-              <span className="text-xl font-black text-[#0066FF] tracking-tight">goMarket</span>
-            </a>
+        {/* Header */}
+        <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-40">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4">
+            <Link href="/" className="flex items-center gap-2">
+              <span className="text-3xl">🛒</span>
+              <div>
+                <h1 className="text-base font-black tracking-tight">goMarket <span className="text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded font-bold">NG</span></h1>
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">36 States Direct Commerce</p>
+              </div>
+            </Link>
 
-            <div className="flex items-center gap-2">
-              <a
-                href="/login"
-                className="h-9 px-4 bg-[#0066FF] hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center shadow-xs transition-all hover:scale-[1.02]"
-              >
-                Seller Portal ↗
-              </a>
+            <div className="flex-1 max-w-xl">
+              <input
+                type="text"
+                placeholder="Search products, phones, cars, shoes..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-11 bg-slate-800 border border-slate-700 text-white placeholder-slate-400 px-4 rounded-xl text-xs font-bold focus:outline-none focus:border-blue-500"
+              />
             </div>
+
+            <Link href="/register" className="h-11 px-5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black flex items-center shadow-md">
+              Vendor Portal 🚀
+            </Link>
           </div>
         </header>
-        
 
-        <main className="max-w-7xl mx-auto px-3.5 pt-4 pb-12 space-y-4">
-          {/* Flash Deals & Urgency Ticker */}
-          <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs flex items-center justify-between gap-2 overflow-hidden">
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="animate-pulse">⚡</span>
-              <span className="tracking-wide uppercase text-[10px] font-black bg-white/20 px-2 py-0.5 rounded">Live Deal Ticker</span>
-            </div>
-            <p className="text-[11px] font-medium truncate text-blue-100">
-              🔥 Over 140+ buyers currently chatting directly with verified vendors across Nigeria!
-            </p>
-          </div>
-          
-
-          {/* Search & Filter Toolbar */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-xs space-y-3 relative">
-            <div className="flex flex-col sm:flex-row items-center gap-2">
-              <div className="relative flex items-center flex-1 w-full">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="🔍 Search auctions, cars, houses, phones, food stuff..."
-                  className="w-full h-10 pl-3.5 pr-20 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-medium focus:bg-white focus:border-[#0066FF] focus:outline-none transition-all"
-                />
-
-                <div className="absolute right-2.5 flex items-center gap-1.5">
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery('')}
-                      className="text-xs font-bold text-slate-400 hover:text-slate-600 p-1"
-                    >
-                      ✕
-                    </button>
-                  )}
-
-                  
-                  <button
-                    onClick={handleVoiceSearch}
-                    className={`p-1.5 rounded-lg text-xs transition-colors ${
-                      isListening
-                        ? 'bg-rose-500 text-white animate-bounce'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                    title="Voice Search"
-                  >
-                    🎙️
-                  </button>
-                </div>
-              </div>
-
-              {/* 🌟 STABLE CUSTOM DROPDOWN MENU FOR 36 STATES */}
-              <div className="relative w-full sm:w-56 shrink-0" ref={dropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setIsStateDropdownOpen(!isStateDropdownOpen)}
-                  className="w-full h-10 px-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl border border-slate-800 flex items-center justify-between shadow-xs transition-all"
-                >
-                  <span>📍 {selectedState} {selectedState !== 'All States' ? 'State' : ''}</span>
-                  <span className="text-[10px] text-slate-400">▼</span>
-                </button>
-
-                {isStateDropdownOpen && (
-                  <div className="absolute top-12 left-0 w-full sm:w-72 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto p-1.5 space-y-1">
-                    {NIGERIAN_STATES.map((state) => (
-                      <button
-                        key={state}
-                        onClick={() => {
-                          setSelectedState(state);
-                          setIsStateDropdownOpen(false);
-                        }}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-between ${
-                          selectedState === state
-                            ? 'bg-[#0066FF] text-white shadow-xs'
-                            : 'text-slate-700 hover:bg-slate-50'
-                        }`}
-                      >
-                        <span>📍 {state} {state !== 'All States' ? 'State' : ''}</span>
-                        {selectedState === state && <span>✓</span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 🏷️ Comprehensive Categories Pill Bar */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-              <span className="text-[11px] font-bold text-slate-400 shrink-0">Categories:</span>
-              {MARKETPLACE_CATEGORIES.map((cat) => (
-                <button
-                  key={cat.value}
-                  onClick={() => setSelectedCategory(cat.value)}
-                  className={`px-3 py-1 rounded-xl text-[11px] font-bold border transition-all shrink-0 ${
-                    selectedCategory === cat.value
-                      ? 'bg-[#0066FF] text-white border-[#0066FF] shadow-xs'
-                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  {cat.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1 border-t border-slate-100">
-              <button
-                onClick={() => setOnlyNegotiable(!onlyNegotiable)}
-                className={`px-3 py-1.5 rounded-xl font-bold border transition-all text-xs flex items-center gap-1.5 ${
-                  onlyNegotiable
-                    ? 'bg-amber-500 text-white border-amber-500 shadow-xs'
-                    : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
-                }`}
-              >
-                🤝 Negotiable Deals Only
-              </button>
-
-              <span className="text-xs font-extrabold text-slate-400">
-                {filteredItems.length} Products Found in {selectedState}
+        {/* Hero Banner or Shared Vendor Storefront Banner */}
+        {sharedVendorName ? (
+          <section className="bg-gradient-to-r from-blue-900 via-slate-900 to-indigo-950 text-white py-12 px-4 text-center border-b border-slate-800">
+            <div className="max-w-4xl mx-auto space-y-3">
+              <span className="bg-blue-500 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
+                🏪 Verified Merchant Mini-Storefront
               </span>
-            </div>
-          </div>
-
-          
-
-          {/* Vendors Strip */}
-          {sellers.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-              <button
-                onClick={() => setSelectedSellerSlug('all')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap border transition-all ${
-                  selectedSellerSlug === 'all'
-                    ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                }`}
-              >
-                🛒 All Stores
-              </button>
-              {sellers.map((seller) => (
-                <button
-                  key={seller.id}
-                  onClick={() => setSelectedSellerSlug(seller.slug)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap border transition-all flex items-center gap-1.5 ${
-                    selectedSellerSlug === seller.slug
-                      ? 'bg-[#0066FF] text-white border-[#0066FF]'
-                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                  {seller.business_name}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* 👑 ADMIN FEATURED TOP 5 SLOTS */}
-          {adminFeaturedSlots.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <span>👑</span> Admin Featured Top 5 Slots
-                </h2>
-                <span className="text-[10px] font-extrabold text-white bg-slate-900 px-2.5 py-0.5 rounded-md">
-                  Admin Curated
-                </span>
+              <h2 className="text-3xl sm:text-4xl font-black tracking-tight">{sharedVendorName}</h2>
+              <p className="text-slate-300 text-xs font-medium">Browse all verified items offered directly by {sharedVendorName}.</p>
+              <div className="pt-2">
+                <Link href="/" className="inline-block bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-black border border-slate-700 hover:bg-slate-700">
+                  ← Back to Full Marketplace
+                </Link>
               </div>
+            </div>
+          </section>
+        ) : sharedProductId ? (
+          <section className="bg-slate-900 text-white py-8 px-4 text-center border-b border-slate-800">
+            <div className="max-w-4xl mx-auto space-y-2">
+              <span className="bg-amber-500 text-slate-950 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
+                🎯 Direct Shared Listing
+              </span>
+              <h2 className="text-xl sm:text-2xl font-black tracking-tight">Viewing Shared Item</h2>
+              <Link href="/" className="inline-block bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black mt-2">
+                View All Marketplace Items 🏠
+              </Link>
+            </div>
+          </section>
+        ) : (
+          <section className="bg-slate-900 text-white py-12 px-4 text-center border-b border-slate-800">
+            <div className="max-w-4xl mx-auto space-y-3">
+              <span className="bg-blue-500/20 text-blue-400 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest border border-blue-500/30">
+                Direct Merchant Marketplace Across Nigeria
+              </span>
+              <h2 className="text-3xl sm:text-5xl font-black tracking-tight">Buy & Sell Directly With Verified Vendors</h2>
+              <p className="text-slate-400 text-xs sm:text-sm font-medium">Zero middleman fees. Direct WhatsApp & phone contact with sellers in all 36 states.</p>
+            </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
-                {adminFeaturedSlots.map((ad) => {
-                  const formattedPrice = formatPriceKobo(ad.price_kobo);
-                  const whatsappUrl = `https://wa.me/${ad.whatsapp_number}?text=${encodeURIComponent(
-                    `Hello \${ad.store_name}, I am interested in your featured item "\${ad.title}" priced at \${formattedPrice} on goMarket.`
-                  )}`;
+            <div className="max-w-4xl mx-auto mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 px-4">
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Filter State</label>
+                <select
+                  value={selectedState}
+                  onChange={(e) => setSelectedState(e.target.value)}
+                  className="w-full h-11 bg-slate-800 border border-slate-700 text-white px-3 rounded-xl text-xs font-bold"
+                >
+                  {NIGERIAN_STATES.map(state => <option key={state} value={state}>{state}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Filter Category</label>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full h-11 bg-slate-800 border border-slate-700 text-white px-3 rounded-xl text-xs font-bold"
+                >
+                  {ALL_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </select>
+              </div>
+            </div>
+          </section>
+        )}
 
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-12">
+
+          {/* Sponsored Deals Section (Shown when browsing general feed) */}
+          {!sharedProductId && !sharedVendorName && sponsoredProducts.length > 0 && (
+            <section className="space-y-4">
+              <div className="flex items-center gap-2 border-b pb-2 border-slate-200">
+                <span className="text-lg">🏆</span>
+                <h3 className="text-xs font-black uppercase tracking-wider text-amber-600">Sponsored Deals & Featured Listings</h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {sponsoredProducts.map(product => {
+                  const whatsappMsg = `Hello! I saw your sponsored listing "${product.title}" priced at ₦${Number(product.price).toLocaleString()} in ${product.location} on goMarket NG. Is it still available?`;
                   return (
-                    <div
-                      key={ad.id}
-                      className="bg-white rounded-xl border-2 border-amber-400/80 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between group"
-                    >
-                      <div>
-                        <div className="aspect-square bg-slate-50 border-b border-slate-100 relative overflow-hidden flex items-center justify-center block">
-                          <img
-                            src={ad.image_url}
-                            alt={ad.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          />
-
-                          <div className="absolute top-2 left-2 flex flex-col gap-1">
-                            <span className="bg-amber-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-xs">
-                              {ad.badge}
-                            </span>
-                          </div>
-
-                          <div className="absolute bottom-2 left-2">
-                            <span className="bg-slate-950/85 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full backdrop-blur-md">
-                              {ad.store_name}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="p-2.5">
-                          <span className="text-xs font-bold text-slate-900 line-clamp-1 block">
-                            {ad.title}
-                          </span>
-                          <div className="flex items-center justify-between gap-1 mt-1 mb-1.5">
-                            <span className="text-sm font-black text-[#0066FF]">
-                              {formattedPrice}
-                            </span>
-                          </div>
-                        </div>
+                    <div key={product.id} className="bg-white border-2 border-amber-300 rounded-3xl p-3 shadow-xs hover:shadow-md transition space-y-3 relative flex flex-col justify-between">
+                      <div className="absolute top-5 left-5 z-10 bg-amber-500 text-slate-950 text-[9px] font-black px-2 py-0.5 rounded shadow">
+                        ⭐ SPONSORED
                       </div>
-
-                      <div className="p-2.5 pt-0">
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <a
-                            href={whatsappUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="h-8 bg-[#25D366] hover:bg-[#20bd5a] text-white text-[11px] font-bold rounded-lg flex items-center justify-center gap-1 shadow-xs transition-colors"
-                          >
-                            💬 WhatsApp
-                          </a>
-                          <a
-                            href={`tel:${ad.phone_number}`}
-                            className="h-8 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold rounded-lg flex items-center justify-center gap-1 shadow-xs transition-colors"
-                          >
-                            📞 Call
-                          </a>
-                        </div>
+                      <div className="w-full h-44 bg-slate-100 rounded-2xl overflow-hidden border">
+                        <img src={product.image_url_1} alt={product.title} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{product.location} • {product.category}</div>
+                        <h4 className="font-black text-xs text-slate-900 line-clamp-1">{product.title}</h4>
+                        <div className="text-sm font-black text-[#0066FF]">₦{Number(product.price).toLocaleString()}</div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-slate-100">
+                        <a
+                          href={`https://wa.me/${product.whatsapp || product.phone || '2348012345678'}?text=${encodeURIComponent(whatsappMsg)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[9px] font-black flex items-center justify-center shadow-xs"
+                        >
+                          WhatsApp
+                        </a>
+                        <a
+                          href={`tel:${product.phone || product.whatsapp || '2348012345678'}`}
+                          className="h-9 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[9px] font-black flex items-center justify-center shadow-xs"
+                        >
+                          Call 📞
+                        </a>
+                        <button
+                          onClick={() => setActiveOfferProduct(product)}
+                          className="h-9 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-[9px] font-black flex items-center justify-center border border-blue-200"
+                        >
+                          Offer 🤝
+                        </button>
                       </div>
                     </div>
                   );
                 })}
               </div>
-            </div>
+            </section>
           )}
 
-          <div className="pt-2">
-            <h2 className="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-1 mb-3">
-              <span>🛍️</span> Marketplace Feed
-            </h2>
-
-            {/* Product Grid */}
-            {filteredItems.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-200/80 p-10 text-center max-w-md mx-auto">
-                <p className="text-3xl mb-2">🔍</p>
-                <h3 className="text-sm font-bold text-slate-900 mb-1">No products found</h3>
-                <p className="text-xs text-slate-500 mb-3">Try clearing search or location filters.</p>
-                <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setSelectedSellerSlug('all');
-                    setSelectedStatus('all');
-                    setSelectedState('All States');
-                    setSelectedCategory('all');
-                    setOnlyNegotiable(false);
-                  }}
-                  className="h-9 px-4 bg-[#0066FF] text-white text-xs font-bold rounded-xl shadow-xs hover:bg-blue-700 transition-colors"
-                >
-                  Reset Filters
-                </button>
+          {/* Flash Deals Section */}
+          {!sharedProductId && !sharedVendorName && flashSaleProducts.length > 0 && (
+            <section className="space-y-4 bg-gradient-to-br from-red-600 to-rose-700 p-6 sm:p-8 rounded-3xl shadow-lg border border-red-500">
+              <div className="flex items-center gap-2 border-b pb-3 border-red-500/50 text-white">
+                <span className="text-2xl">⚡</span>
+                <h3 className="text-sm font-black uppercase tracking-wider text-white">24-Hour Flash Deals & Explosive Discounts</h3>
               </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
-                  {firstHalf.map((item) => renderProductCard(item))}
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {flashSaleProducts.map(product => {
+                  const whatsappMsg = `Hello! I saw your flash deal "${product.title}" priced at ₦${Number(product.price).toLocaleString()} in ${product.location} on goMarket NG. Is it still available?`;
+                  return (
+                    <div key={product.id} className="bg-white border-2 border-red-300 rounded-3xl p-3 shadow-md hover:shadow-xl transition space-y-3 relative flex flex-col justify-between">
+                      <div className="absolute top-5 left-5 z-10 bg-red-600 text-white text-[9px] font-black px-2.5 py-1 rounded-full shadow-md animate-pulse">
+                        ⚡ FLASH DEAL
+                      </div>
+                      <div className="w-full h-44 bg-slate-100 rounded-2xl overflow-hidden border">
+                        <img src={product.image_url_1} alt={product.title} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{product.location} • {product.category}</div>
+                        <h4 className="font-black text-xs text-slate-900 line-clamp-1">{product.title}</h4>
+                        <div className="text-sm font-black text-red-600">₦{Number(product.price).toLocaleString()}</div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-slate-100">
+                        <a
+                          href={`https://wa.me/${product.whatsapp || product.phone || '2348012345678'}?text=${encodeURIComponent(whatsappMsg)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[9px] font-black flex items-center justify-center shadow-xs"
+                        >
+                          WhatsApp
+                        </a>
+                        <a
+                          href={`tel:${product.phone || product.whatsapp || '2348012345678'}`}
+                          className="h-9 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[9px] font-black flex items-center justify-center shadow-xs"
+                        >
+                          Call 📞
+                        </a>
+                        <button
+                          onClick={() => setActiveOfferProduct(product)}
+                          className="h-9 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl text-[9px] font-black flex items-center justify-center border border-red-200"
+                        >
+                          Offer 🤝
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
-                {renderAdBanner(middleAd)}
+          {/* Marketplace Listings Feed */}
+          <section className="space-y-4">
+            <div className="flex items-center justify-between border-b pb-2 border-slate-200">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-700">
+                {sharedVendorName ? `Listings by ${sharedVendorName} (${filteredMarketplace.length})` : sharedProductId ? 'Direct Product View' : `Marketplace Listings (${filteredMarketplace.length})`}
+              </h3>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {filteredMarketplace.map(product => {
+                const whatsappMsg = `Hello! I'm interested in your listing "${product.title}" priced at ₦${Number(product.price).toLocaleString()} in ${product.location} on goMarket NG. Is it still available?`;
+                const imagesList = [product.image_url_1, product.image_url_2, product.image_url_3, product.image_url_4, product.image_url_5].filter(Boolean);
 
-                {secondHalf.length > 0 && (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
-                    {secondHalf.map((item) => renderProductCard(item))}
+                return (
+                  <div key={product.id} className={`bg-white rounded-3xl p-3 shadow-xs hover:shadow-md transition space-y-3 flex flex-col justify-between border ${sharedProductId === product.id ? 'border-4 border-blue-600 ring-4 ring-blue-100' : 'border-slate-200'}`}>
+                    <div className="w-full h-48 bg-slate-100 rounded-2xl overflow-hidden border relative">
+                      <img src={product.image_url_1} alt={product.title} className="w-full h-full object-cover" />
+                      {imagesList.length > 1 && (
+                        <div className="absolute bottom-2 right-2 bg-slate-900/80 text-white text-[9px] font-black px-2 py-0.5 rounded-full backdrop-blur-xs">
+                          📷 1/{imagesList.length} Photos
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">📍 {product.location} • 🏷️ {product.category}</div>
+                      <h4 className="font-black text-xs text-slate-900 line-clamp-1">{product.title}</h4>
+                      <div className="text-xs font-bold text-slate-500">🏪 {product.vendor_name || 'Verified Vendor'}</div>
+                      <div className="text-sm font-black text-[#0066FF]">₦{Number(product.price).toLocaleString()}</div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-slate-100">
+                      <a
+                        href={`https://wa.me/${product.whatsapp || product.phone || '2348012345678'}?text=${encodeURIComponent(whatsappMsg)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[9px] font-black flex items-center justify-center shadow-xs"
+                      >
+                        WhatsApp
+                      </a>
+                      <a
+                        href={`tel:${product.phone || product.whatsapp || '2348012345678'}`}
+                        className="h-9 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[9px] font-black flex items-center justify-center shadow-xs"
+                      >
+                        Call 📞
+                      </a>
+                      <button
+                        onClick={() => setActiveOfferProduct(product)}
+                        className="h-9 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-[9px] font-black flex items-center justify-center border border-blue-200"
+                      >
+                        Offer 🤝
+                      </button>
+                    </div>
                   </div>
-                )}
+                );
+              })}
 
-                {renderAdBanner(bottomAd)}
-              </>
-            )}
-          </div>
+              {filteredMarketplace.length === 0 && (
+                <div className="col-span-full text-center py-20 text-slate-400 text-xs font-bold">
+                  No products matched this link or filter. <Link href="/" className="text-blue-600 underline">View all listings</Link>
+                </div>
+              )}
+            </div>
+          </section>
+
         </main>
       </div>
-      
 
-      {/* Modern goMarket Footer (With Support WhatsApp Icon) */}
-      <footer className="bg-slate-950 text-slate-400 border-t border-slate-800 pt-10 pb-8 px-4 space-y-8">
-        <div className="max-w-7xl mx-auto space-y-8">
-          {/* Buyer Protection Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-900 border border-slate-800 p-4 rounded-2xl text-xs font-medium text-slate-300">
-            <div className="flex items-center gap-3">
-              <span className="text-xl">🛡️</span>
-              <div>
-                <strong className="text-white block text-xs">0% Commission Fees</strong>
-                <span className="text-[11px] text-slate-400">Direct owner prices without middlemen</span>
-              </div>
+      {/* Comprehensive Professional Footer */}
+      <footer className="bg-slate-900 text-slate-400 border-t border-slate-800 mt-20 pt-16 pb-12 text-xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 pb-12 border-b border-slate-800">
+          
+          <div className="space-y-3 lg:col-span-1">
+            <div className="flex items-center gap-2 text-white">
+              <span className="text-2xl">🛒</span>
+              <span className="font-black text-sm">goMarket NG</span>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xl">💬</span>
-              <div>
-                <strong className="text-white block text-xs">Verified WhatsApp Merchants</strong>
-                <span className="text-[11px] text-slate-400">Chat & bargain directly with business owners</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xl">⚡</span>
-              <div>
-                <strong className="text-white block text-xs">Instant Local Pickup</strong>
-                <span className="text-[11px] text-slate-400">Same-day delivery across all 36 states</span>
-              </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Nigeria's premier direct merchant marketplace. Connecting buyers directly with verified vendors across all 36 states with zero middleman commissions.
+            </p>
+            <div className="pt-2">
+              <Link href="/register" className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-black px-4 py-2 rounded-xl text-[10px] shadow">
+                Become a Vendor 🚀
+              </Link>
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="space-y-1">
-              <span className="text-[10px] font-black tracking-widest text-[#0066FF] uppercase bg-blue-500/10 border border-blue-500/20 px-3 py-1 rounded-full">
-                Direct Seller Marketplace • 0% Commission
-              </span>
-              <h2 className="text-lg sm:text-xl font-black text-white">
-                Buy Directly From Verified Nigerian Vendors
-              </h2>
-            </div>
-            <a
-              href="/login"
-              className="h-10 px-5 bg-[#0066FF] hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center shadow-md transition-colors shrink-0"
-            >
-              Start Selling Free 🚀
-            </a>
+          <div className="space-y-3">
+            <h4 className="text-white font-black uppercase tracking-wider text-[11px]">About Us</h4>
+            <ul className="space-y-2 text-[11px]">
+              <li><Link href="info#about" className="hover:text-white transition">About goMarket</Link></li>
+              <li><Link href="info#careers" className="hover:text-white transition">We are hiring! 💼</Link></li>
+              <li><Link href="info#terms" className="hover:text-white transition">Terms & Conditions</Link></li>
+              <li><Link href="info#privacy" className="hover:text-white transition">Privacy Policy</Link></li>
+            </ul>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-xs border-t border-slate-900 pt-8">
-            <div className="space-y-2.5">
-              <h3 className="font-extrabold text-white text-xs uppercase tracking-wider">About Us</h3>
-              <ul className="space-y-1.5 font-medium">
-                <li><a href="#" className="hover:text-white transition-colors">About goMarket</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">We are hiring!</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Terms & Conditions</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Privacy Policy</a></li>
-              </ul>
-            </div>
-
-            <div className="space-y-2.5">
-              <h3 className="font-extrabold text-white text-xs uppercase tracking-wider">Policies</h3>
-              <ul className="space-y-1.5 font-medium">
-                <li><a href="#" className="hover:text-white transition-colors">Cookie Policy</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Copyright Infringement Policy</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Safety Tips</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">FAQ</a></li>
-              </ul>
-            </div>
-
-            <div className="space-y-2.5">
-              <h3 className="font-extrabold text-white text-xs uppercase tracking-wider">Support</h3>
-              <ul className="space-y-1.5 font-medium">
-                <li className="text-slate-300 font-bold">support@gomarket.ng</li>
-                {/* 💬 Support WhatsApp Link */}
-                <li>
-                  <a
-                    href="https://wa.me/2348000000000?text=Hello%20goMarket%20Support,%20I%20need%20help%20with..."
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-[#25D366] font-bold hover:underline"
-                  >
-                    <span>💬</span> Chat with Support on WhatsApp
-                  </a>
-                </li>
-                <li><a href="#" className="hover:text-white transition-colors">Safety Center</a></li>
-              </ul>
-            </div>
-
-            <div className="space-y-2.5">
-              <h3 className="font-extrabold text-white text-xs uppercase tracking-wider">Our Resources</h3>
-              <ul className="space-y-1.5 font-medium">
-                <li><a href="#" className="hover:text-white transition-colors flex items-center gap-1.5">📘 Facebook</a></li>
-                <li><a href="#" className="hover:text-white transition-colors flex items-center gap-1.5">📸 Instagram</a></li>
-                <li><a href="#" className="hover:text-white transition-colors flex items-center gap-1.5">🌐 goMarket Africa</a></li>
-              </ul>
-            </div>
+          <div className="space-y-3">
+            <h4 className="text-white font-black uppercase tracking-wider text-[11px]">Support</h4>
+            <ul className="space-y-2 text-[11px]">
+              <li><a href="mailto:support@gomarket.ng" className="hover:text-white transition font-bold text-blue-400">support@gomarket.ng</a></li>
+              <li><Link href="info#safety" className="hover:text-white transition">Safety Tips 🛡️</Link></li>
+              <li><Link href="info#contact" className="hover:text-white transition">Contact Us</Link></li>
+            </ul>
           </div>
 
-          <div className="pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] font-medium text-slate-500">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">🛒</span>
-              <span className="font-black text-slate-200">goMarket</span>
-              <span>© {new Date().getFullYear()} All rights reserved.</span>
-            </div>
-            <span>Built for Nigerian Direct Sellers & Buyers</span>
+          <div className="space-y-3">
+            <h4 className="text-white font-black uppercase tracking-wider text-[11px]">Our Resources</h4>
+            <ul className="space-y-2 text-[11px]">
+              <li><a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition">goMarket on Facebook</a></li>
+              <li><a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition">Our Instagram</a></li>
+            </ul>
           </div>
+
+          <div className="space-y-3">
+            <h4 className="text-white font-black uppercase tracking-wider text-[11px]">Hot Links</h4>
+            <ul className="space-y-2 text-[11px]">
+              <li><Link href="/" className="hover:text-white transition">Top Deals & Flash Sales</Link></li>
+              <li><Link href="/dashboard" className="hover:text-white transition">Post Free Listing</Link></li>
+              <li><Link href="/admin/dashboard" className="hover:text-white transition text-amber-400 font-bold">Admin Command Center 🛡️</Link></li>
+            </ul>
+          </div>
+
+        </div>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 flex flex-col sm:flex-row items-center justify-between text-center text-[10px] text-slate-500 font-bold gap-4">
+          <div>&copy; {new Date().getFullYear()} goMarket Nigeria. All rights reserved. Direct peer-to-peer commerce.</div>
         </div>
       </footer>
 
-      {/* Offer Modal */}
-      {offerItem && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-5 max-w-sm w-full shadow-xl space-y-3.5">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-slate-900">
-                Make an Offer on "{offerItem.title}"
-              </h3>
-              <button
-                onClick={() => setOfferItem(null)}
-                className="text-slate-400 hover:text-slate-600 text-xs font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-500">
-              Original Price: <strong className="text-slate-900">{formatPriceKobo(offerItem.price_kobo)}</strong>
-            </p>
-
-            <div>
-              <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1">
-                Your Offer Price (₦)
-              </label>
-              <input
-                type="number"
-                value={customOfferPrice}
-                onChange={(e) => setCustomOfferPrice(e.target.value)}
-                placeholder="Enter your price"
-                className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-[#0066FF]"
-              />
+      {activeOfferProduct && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-xl border">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="text-sm font-black text-slate-900 uppercase">Make an Offer 🤝</h3>
+              <button onClick={() => setActiveOfferProduct(null)} className="text-slate-400 hover:text-slate-700 font-bold text-xs">✕ Close</button>
             </div>
             
+            <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border">
+              <img src={activeOfferProduct.image_url_1} alt={activeOfferProduct.title} className="w-12 h-12 object-cover rounded-xl border" />
+              <div>
+                <h4 className="font-black text-xs line-clamp-1">{activeOfferProduct.title}</h4>
+                <div className="text-xs font-black text-[#0066FF]">Listed at ₦{Number(activeOfferProduct.price).toLocaleString()}</div>
+              </div>
+            </div>
 
-            <button
-              onClick={handleSendCustomOffer}
-              className="w-full h-10 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors"
-            >
-              💬 Send Offer via WhatsApp
-            </button>
+            <form onSubmit={handleSendOffer} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">Your Name / Buyer Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. John Doe"
+                  value={offerName}
+                  onChange={(e) => setOfferName(e.target.value)}
+                  className="w-full h-11 bg-slate-50 border p-3 rounded-xl font-bold"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">Your Proposed Price (₦)</label>
+                <input
+                  type="number"
+                  placeholder="Enter amount you want to pay"
+                  value={offerPrice}
+                  onChange={(e) => setOfferPrice(e.target.value)}
+                  className="w-full h-11 bg-slate-50 border p-3 rounded-xl font-bold text-blue-600"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl shadow-md text-xs flex items-center justify-center gap-2"
+              >
+                Send Offer via WhatsApp 💬
+              </button>
+            </form>
           </div>
         </div>
       )}
@@ -937,4 +505,10 @@ export default function UltimateGoMarketHomePage() {
   );
 }
 
-
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-white text-xs font-bold">Loading marketplace...</div>}>
+      <HomeContent />
+    </Suspense>
+  );
+}
